@@ -1,0 +1,78 @@
+pipeline {
+    agent any
+
+    environment {
+        // Define your Docker Hub or Container Registry credentials ID from Jenkins
+        REGISTRY_CREDENTIALS = 'dockerhub-credentials-id'
+        IMAGE_NAME           = 'shirishpathania/springboot-rest-api'
+        IMAGE_TAG            = "1.0.0"
+        APP_PORT             = '8081'
+    }
+
+    tools {
+        // Matches the names configured in Manage Jenkins -> Tools
+        maven 'jenkins-maven'
+        jdk   'java-23'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Pulls code from the Git repository attached to the job
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building Spring Boot Application...'
+                // Cleans and builds the jar package while skipping unit tests for speed
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running Unit Tests...'
+                // Executes the test suite
+                sh 'mvn test'
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                echo 'Building Docker Image...'
+                // Builds the docker container using the project's Dockerfile
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh "docker build -t ${IMAGE_NAME}:latest ."
+
+                echo 'Pushing Image to Registry...'
+                // Logs into Docker registry safely using Jenkins credentials store
+                withCredentials([usernamePassword(credentialsId: "${REGISTRY_CREDENTIALS}", usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh "echo ${PASS} | docker login -u ${USER} --password-stdin"
+                    sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker push ${IMAGE_NAME}:latest"
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying Containerized REST API...'
+                // Stops any previous instances to free up the host port, then spins up the new image
+                sh "docker stop springboot-app || true"
+                sh "docker rm springboot-app || true"
+                sh "docker run -d --name springboot-app -p ${APP_PORT}:${APP_PORT} ${IMAGE_NAME}:latest"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully! REST API is live.'
+        }
+        failure {
+            echo 'Pipeline failed. Check the console output log for errors.'
+        }
+    }
+}
