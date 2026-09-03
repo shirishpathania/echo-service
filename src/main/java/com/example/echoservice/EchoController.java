@@ -11,6 +11,7 @@ import java.util.Map;
 @RequestMapping("/api")
 public class EchoController {
 
+    // The below method is designed for a POST Method API which returns the request body in the response and status code 200 OK
     @PostMapping("/echo")
     public Map<String, Object> echo(@RequestBody Map<String, Object> requestBody) {
         return requestBody;
